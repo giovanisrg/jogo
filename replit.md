@@ -1,67 +1,81 @@
-# ESMO Manager
+# ESMO MOBA
 
-Plataforma brasileira de gerenciamento de times de esports MOBA. Gerencie seu time, dispute partidas ranqueadas, participe de campeonatos e domine o pick & ban com informações completas de campeões.
+An esports team management game where the player acts as manager/coach: build a roster, draft LoL champions, configure tactics, and watch simulated matches.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — rodar o servidor de API (porta 8080)
-- `pnpm --filter @workspace/lol-manager run dev` — rodar o frontend (porta 19633)
-- `pnpm run typecheck` — verificar tipos em todos os pacotes
-- `pnpm run build` — build completo
-- `pnpm --filter @workspace/api-spec run codegen` — regenerar hooks e schemas Zod do OpenAPI
-- `pnpm --filter @workspace/db run push` — aplicar mudanças no schema do DB (dev apenas)
-- Env necessária: `DATABASE_URL` — string de conexão PostgreSQL
+- `pnpm --filter @workspace/api-server run dev` — run the API server (port 8080, proxied at /api)
+- `pnpm --filter @workspace/esmo-moba run dev` — run the frontend (port varies, proxied at /)
+- `pnpm run typecheck` — full typecheck across all packages
+- `pnpm run build` — typecheck + build all packages
+- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
+- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
+- Required env: `DATABASE_URL` — Postgres connection string, `SESSION_SECRET`
 
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
+- Frontend: React + Vite + Tailwind CSS + shadcn/ui + Wouter (routing)
+- API: Express 5 (port 8080, proxied under /api)
 - DB: PostgreSQL + Drizzle ORM
-- Validação: Zod (`zod/v4`), `drizzle-zod`
-- Codegen API: Orval (a partir do spec OpenAPI)
-- Build: esbuild (bundle CJS)
-- Frontend: React + Vite + Tailwind CSS + shadcn/ui
+- Validation: Zod (`zod/v4`), `drizzle-zod`
+- API codegen: Orval (from OpenAPI spec)
+- Build: esbuild (CJS bundle)
 
-## Onde as coisas ficam
+## Where things live
 
-- `artifacts/api-server/src/routes/` — rotas Express (manager, team, roster, matches, draft, champions, dashboard, championships)
-- `artifacts/api-server/src/lib/` — lógica de negócio (simulation.ts, ddragon.ts, seed.ts, logger.ts)
-- `artifacts/lol-manager/src/pages/` — todas as páginas do frontend
-- `artifacts/lol-manager/src/components/` — componentes reutilizáveis (Layout.tsx)
-- `lib/api-spec/openapi.yaml` — contrato OpenAPI (fonte da verdade)
-- `lib/db/src/schema/` — schema do banco de dados Drizzle
+- `artifacts/esmo-moba/` — React+Vite frontend
+- `artifacts/api-server/` — Express 5 backend
+- `lib/db/src/schema/` — Drizzle ORM schema (source of truth for DB)
+- `lib/api-spec/openapi.yaml` — OpenAPI spec (source of truth for API contract)
+- `lib/api-client-react/src/generated/` — auto-generated React Query hooks
+- `lib/api-zod/src/generated/` — auto-generated Zod schemas
+- `artifacts/api-server/src/engine/simulator.ts` — match simulation engine
+- `artifacts/api-server/src/lib/championService.ts` — Data Dragon integration (172 LoL champions)
 
-## Arquitetura
+## Architecture decisions
 
-- Contrato-primeiro: spec OpenAPI define todos os endpoints, Orval gera hooks React Query e schemas Zod
-- Simulação de partidas no servidor com sistema de pontos de patente
-- Dados de campeões carregados da API DDragon do LoL em tempo real
-- Chat da equipe em memória por partida (chatStore no servidor)
-- Seed automático na inicialização: times AI, agentes livres, campeonatos
+- Contract-first API: OpenAPI spec → Orval codegen → typed React Query hooks
+- `lib/api-zod/src/index.ts` MUST only export `from "./generated/api"` — orval keeps regenerating both exports; the codegen script in api-spec/package.json auto-fixes this
+- Match simulation uses real player attributes (precision, reaction, map reading, etc.) vs opponent's average rating
+- Champions synced from Data Dragon API v16.x — 172 champions with icons, positions, meta stats
+- Club localStorage key: `"esmo_club_id"` — validated on mount (rejects AI clubs, forces re-onboarding)
+- AI club validation: App.tsx checks `isAi` field on load; if true, clears localStorage and redirects to onboarding
 
 ## Product
 
-- **Onboarding**: Criar gerente e time com nome e região
-- **Dashboard**: Stats do time, classificação geral com patentes coloridas, partidas recentes
-- **Elenco**: Gerenciar jogadores com stats (mecânica, decisão, teamwork, consistência), pool de campeões, contratar do mercado
-- **Partidas**: Disputar amistosas (sem pontos), ranqueadas (±30 pts) e campeonatos (±50 pts) com resultado detalhado
-- **Pick & Ban**: Tela de draft com imagens reais dos campeões, tier, tipo de ataque (físico/mágico/híbrido), vantagens e desvantagens
-- **Campeões**: Browser com 172+ campeões, filtros por role/tier/tipo de ataque, painel de detalhes com matchups
-- **Estratégia**: Configurar estilo de jogo, early/late game, prioridade no draft, gestão de minions e visão
-- **Campeonatos**: Criar e se inscrever em campeonatos com taxa de entrada e premiação
+- **Onboarding**: Create org name, manager alias, region, financial mode
+- **Command Center (Dashboard)**: Real-time stats — balance, payroll, matches, manager XP; roster overview; upcoming matches
+- **Roster**: Starting lineup by position
+- **Transfer Market**: Browse 50+ free agents with search/filter; sign players with 4-week upfront fee
+- **Champions**: Full LoL champion library (172) with splash art, meta stats, ability details, power curves
+- **Competitions**: Join Iron/Bronze leagues and cups; round-robin and elimination formats
+- **Matches**: Draft phase (ban/pick from 172 champions), match simulation with timeline
+- **Talent Tree**: Manager skill upgrades using talent points
+- **Advance Week**: Deducts salaries, processes training, progresses game state
+
+## Seed Data
+
+- `/api/game/seed` (POST) — seeds 5 AI clubs, 50 free agents, 172 champions, 3 competitions
+- Run ONCE before onboarding (onboarding calls it automatically)
+- AI clubs auto-join Iron League; player club joins manually via Competitions page or auto-joins at seed time
 
 ## User preferences
 
-- Toda a interface deve estar em português brasileiro
-- Tema escuro gaming com dourado como cor primária e ciano como acento
-- Patentes: Ferro, Bronze, Prata, Ouro, Platina, Diamante, Mestre, Grão-Mestre, Desafiante
+- Dark purple esports theme throughout
+- All text in English (UI) with Portuguese field names in DB/API (legacy)
+- TypeScript strict mode
 
 ## Gotchas
 
-- O codegen do Orval regenera `lib/api-zod/src/index.ts` — não ter `schemas: { path: "generated/types" }` na config zod do orval.config.ts
-- O servidor usa pino para logging; nunca usar console.log em código de servidor
-- A API retorna 404 JSON quando o gerente não existe (comportamento correto, frontend exibe onboarding)
-- Dados de campeões vêm da DDragon API do LoL — requer acesso à internet
+- `lib/api-zod/src/index.ts` MUST only have `export * from "./generated/api";` — fixed in codegen script
+- `or()` from drizzle-orm must be imported separately (not in the main `@workspace/db` bundle)
+- Dashboard API fields: `competicoesAtivas`, `proximasPartidas`, `salarioSemanal`, `semanaAtual`, `roster`
+- Match simulate returns 404 if match not found, 400 if no players; clubeId comes from req.body
+- `useAdvanceWeek` mutate: `{ id }` only (no `data` field)
+- `useSimulateMatch` mutate: `{ id }` only (no `data` field)
+- `useReleasePlayer` mutate: `{ id }` only (no `data` field)
+- `useSeedDatabase` mutateAsync: no args (void)
 
 ## Pointers
 
